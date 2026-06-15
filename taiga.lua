@@ -1,13 +1,13 @@
-#! /usr/bin/env lua
+#! /usr/bin/env lua5.4
 -- SPDX-FileCopyrightText: © 2026 FireFly
 -- SPDX-License-Identifier: 0BSD
 
 local wau = require("wau")
-local xkbcommon = require("tinyrwm.xkbcommon")
+local xkbcommon = require("taiga.xkbcommon")
 local posix = require("posix")
 
-wau:require("tinyrwm.protocol.river-window-management-v1")
-wau:require("tinyrwm.protocol.river-xkb-bindings-v1")
+wau:require("taiga.protocol.river-window-management-v1")
+wau:require("taiga.protocol.river-xkb-bindings-v1")
 
 local globals = {}
 local required_globals = {
