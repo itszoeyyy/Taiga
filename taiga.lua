@@ -5,6 +5,8 @@
 local wau = require("wau")
 local xkbcommon = require("taiga.xkbcommon")
 local posix = require("posix")
+local signal = require("posix.signal")
+local inotify = require("inotify")
 
 wau:require("taiga.protocol.river-window-management-v1")
 wau:require("taiga.protocol.river-xkb-bindings-v1")
@@ -19,6 +21,25 @@ local Mods = wau.river_seat_v1.Modifiers
 local mod = Mods.MOD1
 
 -- config file related functions
+local function open_config()
+    config_file_path = get_config_file()
+
+    if config_file_path == nil then
+        print("Using backup local config file.")
+        config_file_path = posix.getcwd() .. "/taigarc.lua"
+
+        if not file_exists(config_file_path) then
+            print("WARNING! Config file doesnt exist, expect breakage.")
+        end
+    end
+
+    chunk, err = loadfile(config_file_path, "t")
+    if not chunk then error("load error: "..tostring(err)) end
+    taigarc = chunk()
+    print("Successfully loaded config file.")
+    return taigarc
+end
+
 local function expand_tilde(path)
   if not path then return path end
   local home = os.getenv("HOME")
@@ -58,20 +79,19 @@ end
 -- config file related functions
 
 -- Load the config file with abs path
-config_file_path = get_config_file()
+-- setup inotify to run this all the time
 
-if config_file_path == nil then
-    print("Using backup local config file.")
-    config_file_path = posix.getcwd() .. "/taigarc.lua"
+taigarc = open_config()
 
-    if not file_exists(config_file_path) then
-        print("WARNING! Config file doesnt exist, expect breakage.")
+if posix.unistd.fork() == 0 then
+    local parent_pid = posix.unistd.getppid()
+    local handle = inotify.init()
+    local wd = handle:addwatch(config_file_path, inotify.IN_MODIFY)
+    for ev in handle:events() do
+        print("config file changed, reloading")
+        posix.signal.kill(parent_pid, signal.SIGUSR1)
     end
 end
-
-local chunk, err = loadfile(config_file_path, "t")
-if not chunk then error("load error: "..tostring(err)) end
-local taigarc = chunk()
 -- Load the config file with abs path
 
 local xkb_bindings = get_keybinds(mod).keyboard_binds or {{}}
@@ -326,10 +346,17 @@ function Seat:add_pointer_binding(button, mods, action)
 end
 
 function Seat:add_xkb_binding(key, mods, action, arg)
+    if config_reload then
+        print("clearing binds")
+        self.xkb_bindings = {}
+        config_reload = false
+    end
+
     local keysym = xkbcommon.keysym(key)
     local obj = globals["river_xkb_bindings_v1"]:get_xkb_binding(
                     self.obj, keysym, mods)
     local binding = { obj = obj }
+
     obj:add_listener {
         ["pressed"] = function (_)
             self.pending_action = action
@@ -543,5 +570,19 @@ for k in pairs(required_globals) do
 end
 
 globals["river_window_manager_v1"]:add_listener(wm_handlers)
+
+
+signal.signal(signal.SIGUSR1, function()
+    taigarc = open_config()
+    xkb_bindings = get_keybinds(mod).keyboard_binds or {{}}
+    pointer_bindings = get_keybinds(mod).mouse_binds or {{}}
+
+    print("XKB")
+    print(xkb_bindings)
+    for _, seat in ipairs(wm.seats) do
+        seat.new = true
+        config_reload = true
+    end
+end)
 
 while display:dispatch() do end
