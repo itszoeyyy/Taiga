@@ -53,17 +53,29 @@ function get_config_file()
             return expand_tilde(p)
         end
     end
+    return nil
 end
 -- config file related functions
 
 -- Load the config file with abs path
-local chunk, err = loadfile(get_config_file(), "t")
+config_file_path = get_config_file()
+
+if config_file_path == nil then
+    print("Using backup local config file.")
+    config_file_path = posix.getcwd() .. "/taigarc.lua"
+
+    if not file_exists(config_file_path) then
+        print("WARNING! Config file doesnt exist, expect breakage.")
+    end
+end
+
+local chunk, err = loadfile(config_file_path, "t")
 if not chunk then error("load error: "..tostring(err)) end
 local taigarc = chunk()
 -- Load the config file with abs path
 
-local xkb_bindings = get_keybinds(mod).keyboard_binds
-local pointer_bindings = get_keybinds(mod).mouse_binds
+local xkb_bindings = get_keybinds(mod).keyboard_binds or {{}}
+local pointer_bindings = get_keybinds(mod).mouse_binds or {{}}
 
 local wm = {
     outputs = {},
